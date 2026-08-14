@@ -8,7 +8,7 @@ import { CartProvider } from "@/components/CartProvider";
 
 export const metadata: Metadata = {
   verification: {
-    google: "poMj72mfiLzFoltYIW",
+    google: "poMj72mfiLzFoltY",
   },
   title: {
     default: "KC Smart Buys | Smart Choices, Real Value",
