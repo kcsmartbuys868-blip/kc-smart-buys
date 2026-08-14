@@ -7,6 +7,9 @@ import WhatsAppButton from "@/components/WhatsAppButton";
 import { CartProvider } from "@/components/CartProvider";
 
 export const metadata: Metadata = {
+  verification: {
+    google: "poMj72mfiLzFoltYIW",
+  },
   title: {
     default: "KC Smart Buys | Smart Choices, Real Value",
     template: "%s | KC Smart Buys",
