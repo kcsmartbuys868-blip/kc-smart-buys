@@ -1,3 +1,4 @@
+import Image from "next/image";
 export default function Hero() {
   return (
     <section className="bg-gradient-to-r from-blue-900 to-blue-700 text-white">
@@ -39,9 +40,11 @@ export default function Hero() {
 
         {/* Right Side */}
         <div className="flex-1 flex justify-center">
-          <img
-            src="/hero-products.png"
+          <Image
+            src="/hero.png"
             alt="KC Smart Buys"
+            width={600}
+            height={600}
             className="w-full max-w-lg"
           />
         </div>
