@@ -2,15 +2,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { products } from "@/lib/products";
+import { getProducts } from "@/lib/api";
 import AddToCartButton from "@/components/AddToCartButton";
 import ProductImageGallery from "@/components/ProductImageGallery";
-
-export function generateStaticParams() {
-  return products.map((product) => ({
-    id: product.id,
-  }));
-}
 
 export default async function ProductPage({
   params,
@@ -18,6 +12,8 @@ export default async function ProductPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+
+  const products = await getProducts();
 
   const product = products.find((item) => item.id === id);
 
@@ -58,10 +54,16 @@ export default async function ProductPage({
 
             {/* Product Image Gallery */}
             <div className="relative">
-              <ProductImageGallery
-                images={product.images}
-                productName={product.name}
-              />
+              {product.images.length > 0 ? (
+                <ProductImageGallery
+                  images={product.images}
+                  productName={product.name}
+                />
+              ) : (
+                <div className="flex aspect-square items-center justify-center bg-gray-100 text-sm font-semibold text-gray-400">
+                  Image unavailable
+                </div>
+              )}
 
               {product.originalPrice && (
                 <div className="absolute left-6 top-6 rounded-full bg-yellow-500 px-4 py-2 text-sm font-extrabold text-blue-950 shadow-md">
@@ -109,7 +111,8 @@ export default async function ProductPage({
                 </h2>
 
                 <p className="mt-3 leading-7 text-gray-600">
-                  {product.description}
+                  {product.description ||
+                    "A practical choice offering great value for your money."}
                 </p>
               </div>
 
@@ -223,13 +226,19 @@ export default async function ProductPage({
                   className="group overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-100 transition hover:-translate-y-1 hover:shadow-lg"
                 >
                   <div className="relative aspect-square overflow-hidden bg-gray-100">
-                    <Image
-                      src={item.images[0]}
-                      alt={item.name}
-                      fill
-                      sizes="(max-width: 640px) 50vw, 25vw"
-                      className="object-contain p-3 transition duration-500 group-hover:scale-105 sm:p-5"
-                    />
+                    {item.images.length > 0 ? (
+                      <Image
+                        src={item.images[0]}
+                        alt={item.name}
+                        fill
+                        sizes="(max-width: 640px) 50vw, 25vw"
+                        className="object-contain p-3 transition duration-500 group-hover:scale-105 sm:p-5"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-xs font-semibold text-gray-400">
+                        Image unavailable
+                      </div>
+                    )}
                   </div>
 
                   <div className="p-3 sm:p-4">

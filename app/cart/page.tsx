@@ -2,8 +2,12 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useState } from "react";
 import { useCart } from "@/components/CartProvider";
 import CheckoutForm from "@/components/CheckoutForm";
+
+const STOCK_API_URL =
+  "https://script.google.com/macros/s/AKfycbyJhOcQMfH2Cs9RQfMAjSiyNQQmTNtIyWG3gYbi6WvfQmAS3-q3fqND1IkJDPijmcWmJg/exec";
 
 export default function CartPage() {
   const {
@@ -14,43 +18,108 @@ export default function CartPage() {
     cartTotal,
   } = useCart();
 
-  const handleCheckout = (details: {
+  const [processing, setProcessing] = useState(false);
+  const [orderError, setOrderError] = useState("");
+
+  const handleCheckout = async (details: {
     name: string;
     phone: string;
     orderType: "Delivery" | "Pickup";
     address: string;
     note: string;
   }) => {
-    const orderItems = cart
-      .map(
-        (item) =>
-          `${item.name} x${item.quantity} - $${item.price * item.quantity}`
-      )
-      .join("\n");
+    if (processing) {
+      return;
+    }
 
-    const message = `Hi KC Smart Buys, I'd like to place an order.
+    setProcessing(true);
+    setOrderError("");
+
+    try {
+      /*
+       * Send the order to Google Apps Script
+       * so stock can be deducted.
+       */
+      const response = await fetch("/api/order", {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8",
+        },
+        body: JSON.stringify({
+          items: cart.map((item) => ({
+            id: item.id,
+            quantity: item.quantity,
+          })),
+        }),
+      });
+
+      if (!response.ok) {
+  const errorText = await response.text();
+  throw new Error(
+    `Stock API error: ${response.status} ${errorText}`
+  );
+}
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(
+          result.message || "Unable to update stock."
+        );
+      }
+
+      /*
+       * Build the WhatsApp order message.
+       */
+      const orderItems = cart
+        .map(
+          (item) =>
+            `${item.name} x${item.quantity} - $${
+              item.price * item.quantity
+            }`
+        )
+        .join("\n");
+
+      const message = `Hi KC Smart Buys, I'd like to place an order.
 
 CUSTOMER DETAILS
 Name: ${details.name}
 Phone: ${details.phone}
 Order Method: ${details.orderType}${
-      details.orderType === "Delivery"
-        ? `\nDelivery Location: ${details.address}`
-        : ""
-    }
+        details.orderType === "Delivery"
+          ? `\nDelivery Location: ${details.address}`
+          : ""
+      }
 
 ORDER
 ${orderItems}
 
 TOTAL: $${cartTotal}${
-      details.note ? `\n\nNOTE: ${details.note}` : ""
-    }`;
+        details.note ? `\n\nNOTE: ${details.note}` : ""
+      }`;
 
-    const whatsappUrl = `https://wa.me/18683071357?text=${encodeURIComponent(
-      message
-    )}`;
+      const whatsappUrl = `https://wa.me/18683071357?text=${encodeURIComponent(
+  message
+)}`;
 
-    window.open(whatsappUrl, "_blank");
+      /*
+       * Clear the cart after the stock update succeeds.
+       */
+      clearCart();
+
+      /*
+       * Open WhatsApp.
+       */
+      window.open(whatsappUrl, "_blank");
+    } catch (error) {
+      console.error("Checkout error:", error);
+
+      setOrderError(
+        "We couldn't process your order right now. Please try again."
+      );
+    } finally {
+      setProcessing(false);
+    }
   };
 
   if (cart.length === 0) {
@@ -98,6 +167,14 @@ TOTAL: $${cartTotal}${
           </p>
         </div>
 
+        {orderError && (
+          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-4 text-center">
+            <p className="font-semibold text-red-700">
+              {orderError}
+            </p>
+          </div>
+        )}
+
         <div className="grid gap-8 lg:grid-cols-[1fr_360px]">
           {/* Cart items */}
           <div className="space-y-4">
@@ -131,8 +208,11 @@ TOTAL: $${cartTotal}${
 
                       <button
                         type="button"
-                        onClick={() => removeFromCart(item.id)}
-                        className="text-xs font-bold text-red-500 hover:text-red-700"
+                        onClick={() =>
+                          removeFromCart(item.id)
+                        }
+                        disabled={processing}
+                        className="text-xs font-bold text-red-500 hover:text-red-700 disabled:opacity-50"
                       >
                         Remove
                       </button>
@@ -143,9 +223,13 @@ TOTAL: $${cartTotal}${
                         <button
                           type="button"
                           onClick={() =>
-                            updateQuantity(item.id, item.quantity - 1)
+                            updateQuantity(
+                              item.id,
+                              item.quantity - 1
+                            )
                           }
-                          className="px-3 py-2 font-bold text-blue-900 hover:bg-gray-50"
+                          disabled={processing}
+                          className="px-3 py-2 font-bold text-blue-900 hover:bg-gray-50 disabled:opacity-50"
                         >
                           −
                         </button>
@@ -157,9 +241,13 @@ TOTAL: $${cartTotal}${
                         <button
                           type="button"
                           onClick={() =>
-                            updateQuantity(item.id, item.quantity + 1)
+                            updateQuantity(
+                              item.id,
+                              item.quantity + 1
+                            )
                           }
-                          className="px-3 py-2 font-bold text-blue-900 hover:bg-gray-50"
+                          disabled={processing}
+                          className="px-3 py-2 font-bold text-blue-900 hover:bg-gray-50 disabled:opacity-50"
                         >
                           +
                         </button>
@@ -177,7 +265,8 @@ TOTAL: $${cartTotal}${
             <button
               type="button"
               onClick={clearCart}
-              className="text-sm font-bold text-red-500 hover:text-red-700"
+              disabled={processing}
+              className="text-sm font-bold text-red-500 hover:text-red-700 disabled:opacity-50"
             >
               Clear Cart
             </button>
@@ -194,7 +283,8 @@ TOTAL: $${cartTotal}${
                 <span className="text-gray-600">
                   Items (
                   {cart.reduce(
-                    (total, item) => total + item.quantity,
+                    (total, item) =>
+                      total + item.quantity,
                     0
                   )}
                   )
@@ -216,7 +306,17 @@ TOTAL: $${cartTotal}${
               </div>
             </div>
 
-            <CheckoutForm onSubmit={handleCheckout} />
+            <CheckoutForm
+              onSubmit={handleCheckout}
+            />
+
+            {processing && (
+              <div className="mt-4 rounded-xl bg-blue-50 px-4 py-3 text-center">
+                <p className="text-sm font-bold text-blue-900">
+                  Processing your order...
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>

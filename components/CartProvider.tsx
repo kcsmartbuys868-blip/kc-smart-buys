@@ -7,7 +7,9 @@ import {
   useState,
   ReactNode,
 } from "react";
-import { Product } from "@/lib/products";
+
+import type { Product } from "@/lib/products";
+import { getProducts } from "@/lib/api";
 
 type CartItem = Product & {
   quantity: number;
@@ -25,26 +27,93 @@ type CartContextType = {
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
-export function CartProvider({ children }: { children: ReactNode }) {
-  const [cart, setCart] = useState<CartItem[]>([]);
+const CART_STORAGE_KEY = "kc-smart-buys-cart";
 
-  // Load saved cart
+export function CartProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cartLoaded, setCartLoaded] = useState(false);
+
+  // Load saved cart from localStorage
   useEffect(() => {
-    const savedCart = localStorage.getItem("kc-smart-buys-cart");
+    const savedCart = localStorage.getItem(CART_STORAGE_KEY);
 
     if (savedCart) {
       try {
         setCart(JSON.parse(savedCart));
       } catch {
-        localStorage.removeItem("kc-smart-buys-cart");
+        localStorage.removeItem(CART_STORAGE_KEY);
       }
     }
+
+    setCartLoaded(true);
   }, []);
 
-  // Save cart
+  // Save cart to localStorage
   useEffect(() => {
-    localStorage.setItem("kc-smart-buys-cart", JSON.stringify(cart));
-  }, [cart]);
+    if (!cartLoaded) return;
+
+    localStorage.setItem(
+      CART_STORAGE_KEY,
+      JSON.stringify(cart)
+    );
+  }, [cart, cartLoaded]);
+
+  // Synchronize cart with Google Sheets API
+  useEffect(() => {
+    if (!cartLoaded) return;
+
+    const synchronizeCart = async () => {
+      try {
+        const latestProducts = await getProducts();
+
+        setCart((currentCart) => {
+          return currentCart
+            .map((cartItem) => {
+              const latestProduct = latestProducts.find(
+                (product) => product.id === cartItem.id
+              );
+
+              // Product was removed or made inactive
+              if (!latestProduct) {
+                return null;
+              }
+
+              // Product is now sold out
+              if ((latestProduct.stock ?? 0) <= 0) {
+                return null;
+              }
+
+              // Keep customer's quantity but don't allow it
+              // to exceed the current stock
+              const updatedQuantity = Math.min(
+                cartItem.quantity,
+                latestProduct.stock ?? 0
+              );
+
+              return {
+                ...latestProduct,
+                quantity: updatedQuantity,
+              };
+            })
+            .filter(
+              (item): item is CartItem =>
+                item !== null && item.quantity > 0
+            );
+        });
+      } catch (error) {
+        console.error(
+          "Unable to synchronize cart with product API:",
+          error
+        );
+      }
+    };
+
+    synchronizeCart();
+  }, [cartLoaded]);
 
   const addToCart = (product: Product) => {
     let addedSuccessfully = false;
@@ -57,12 +126,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
       const currentQuantity = existingItem?.quantity ?? 0;
       const availableStock = product.stock ?? 0;
 
-      // Prevent adding if there is no stock
+      // Product is sold out
       if (availableStock <= 0) {
         return currentCart;
       }
 
-      // Prevent exceeding available stock
+      // Already reached available stock
       if (currentQuantity >= availableStock) {
         return currentCart;
       }
@@ -74,6 +143,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
           item.id === product.id
             ? {
                 ...item,
+                ...product,
                 quantity: item.quantity + 1,
               }
             : item
@@ -94,11 +164,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const removeFromCart = (productId: string) => {
     setCart((currentCart) =>
-      currentCart.filter((item) => item.id !== productId)
+      currentCart.filter(
+        (item) => item.id !== productId
+      )
     );
   };
 
-  const updateQuantity = (productId: string, quantity: number) => {
+  const updateQuantity = (
+    productId: string,
+    quantity: number
+  ) => {
     setCart((currentCart) =>
       currentCart.map((item) => {
         if (item.id !== productId) {
@@ -113,7 +188,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
         return {
           ...item,
-          quantity: Math.min(quantity, availableStock),
+          quantity: Math.min(
+            quantity,
+            availableStock
+          ),
         };
       })
     );
@@ -129,7 +207,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
   );
 
   const cartTotal = cart.reduce(
-    (total, item) => total + item.price * item.quantity,
+    (total, item) =>
+      total + item.price * item.quantity,
     0
   );
 
@@ -154,7 +233,9 @@ export function useCart() {
   const context = useContext(CartContext);
 
   if (!context) {
-    throw new Error("useCart must be used inside CartProvider");
+    throw new Error(
+      "useCart must be used inside CartProvider"
+    );
   }
 
   return context;
